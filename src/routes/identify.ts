@@ -37,8 +37,33 @@ router.post('/', async (req: Request, res: Response) => {
     allContacts = [newContact];
   } else {
     // There are matches, find all related contacts (primary + secondaries)
-    // Find the oldest primary
-    primaryContact = contacts.find((c: Contact) => c.linkPrecedence === 'primary') || contacts[0];
+    // Find all unique primary contacts
+    const primaryContacts = contacts.filter((c: Contact) => c.linkPrecedence === 'primary');
+    let oldestPrimary: Contact;
+    if (primaryContacts.length > 1) {
+      // More than one primary, merge needed
+      // Find the oldest primary
+      oldestPrimary = primaryContacts.reduce((oldest, curr) =>
+        curr.createdAt < oldest.createdAt ? curr : oldest
+      );
+      // The other primaries (to be demoted)
+      const toDemote = primaryContacts.filter((c) => c.id !== oldestPrimary.id);
+      for (const demote of toDemote) {
+        // Demote the primary
+        demote.linkPrecedence = 'secondary';
+        demote.linkedId = oldestPrimary.id;
+        await contactRepo.save(demote);
+        // Demote all its secondaries
+        const secondaries = await contactRepo.find({ where: { linkedId: demote.id } });
+        for (const sec of secondaries) {
+          sec.linkedId = oldestPrimary.id;
+          await contactRepo.save(sec);
+        }
+      }
+      primaryContact = oldestPrimary;
+    } else {
+      primaryContact = primaryContacts[0] || contacts[0];
+    }
     // Get all contacts linked to this primary
     if (primaryContact) {
       allContacts = await contactRepo.find({
@@ -49,7 +74,6 @@ router.post('/', async (req: Request, res: Response) => {
         order: { createdAt: 'ASC' },
       });
     }
-
     // If the current email/phone is not present, add as secondary
     const emailExists = allContacts.some((c: Contact) => c.email === email);
     const phoneExists = allContacts.some((c: Contact) => c.phoneNumber === phoneNumber);
