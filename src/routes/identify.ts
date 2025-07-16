@@ -1,10 +1,10 @@
-import { Router } from 'express';
+import { Router, Request, Response } from 'express';
 import { AppDataSource } from '../data-source';
 import { Contact } from '../entity/Contact';
 
 const router = Router();
 
-router.post('/', async (req, res) => {
+router.post('/', async (req: Request, res: Response) => {
   const { email, phoneNumber } = req.body;
   if (!email && !phoneNumber) {
     return res.status(400).json({ error: 'At least one of email or phoneNumber is required.' });
@@ -38,37 +38,45 @@ router.post('/', async (req, res) => {
   } else {
     // There are matches, find all related contacts (primary + secondaries)
     // Find the oldest primary
-    primaryContact = contacts.find(c => c.linkPrecedence === 'primary') || contacts[0];
+    primaryContact = contacts.find((c: Contact) => c.linkPrecedence === 'primary') || contacts[0];
     // Get all contacts linked to this primary
-    allContacts = await contactRepo.find({
-      where: [
-        { id: primaryContact.id },
-        { linkedId: primaryContact.id },
-      ],
-      order: { createdAt: 'ASC' },
-    });
+    if (primaryContact) {
+      allContacts = await contactRepo.find({
+        where: [
+          { id: primaryContact.id },
+          { linkedId: primaryContact.id },
+        ],
+        order: { createdAt: 'ASC' },
+      });
+    }
 
     // If the current email/phone is not present, add as secondary
-    const emailExists = allContacts.some(c => c.email === email);
-    const phoneExists = allContacts.some(c => c.phoneNumber === phoneNumber);
+    const emailExists = allContacts.some((c: Contact) => c.email === email);
+    const phoneExists = allContacts.some((c: Contact) => c.phoneNumber === phoneNumber);
     if ((email && !emailExists) || (phoneNumber && !phoneExists)) {
-      const newSecondary = contactRepo.create({
-        email: email || null,
-        phoneNumber: phoneNumber || null,
-        linkPrecedence: 'secondary',
-        linkedId: primaryContact.id,
-      });
-      await contactRepo.save(newSecondary);
-      allContacts.push(newSecondary);
+      if (primaryContact) {
+        const newSecondary = contactRepo.create({
+          email: email || null,
+          phoneNumber: phoneNumber || null,
+          linkPrecedence: 'secondary',
+          linkedId: primaryContact.id,
+        });
+        await contactRepo.save(newSecondary);
+        allContacts.push(newSecondary);
+      }
     }
   }
 
+  if (!primaryContact) {
+    return res.status(500).json({ error: 'Primary contact could not be determined.' });
+  }
+
   // Prepare response
-  const emails = Array.from(new Set(allContacts.map(c => c.email).filter(Boolean)));
-  const phoneNumbers = Array.from(new Set(allContacts.map(c => c.phoneNumber).filter(Boolean)));
+  const emails = Array.from(new Set(allContacts.map((c: Contact) => c.email).filter(Boolean)));
+  const phoneNumbers = Array.from(new Set(allContacts.map((c: Contact) => c.phoneNumber).filter(Boolean)));
   const secondaryContactIds = allContacts
-    .filter(c => c.linkPrecedence === 'secondary')
-    .map(c => c.id);
+    .filter((c: Contact) => c.linkPrecedence === 'secondary')
+    .map((c: Contact) => c.id);
 
   res.json({
     contact: {
