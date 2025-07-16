@@ -1,5 +1,6 @@
 import express from 'express';
 import { AppDataSource } from './data-source';
+import identifyRouter from './routes/identify';
 
 const app = express();
 app.use(express.json());
@@ -12,10 +13,7 @@ AppDataSource.initialize()
     console.error('Error during Data Source initialization', err);
   });
 
-// Placeholder for /identify route
-app.post('/identify', (req, res) => {
-  res.send('To be implemented');
-});
+app.use('/identify', identifyRouter);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
